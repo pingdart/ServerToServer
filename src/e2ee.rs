@@ -101,6 +101,23 @@ pub struct PrekeyBundle {
 impl PrekeyBundle {
     /// Cryptographically verifies that the signed prekey is authentic and signed by the user's Ed25519 identity key
     pub fn verify_signature(&self) -> Result<bool> {
+        self.verify_signature_against_identity(None)
+    }
+
+    /// Cryptographically verifies that the signed prekey is authentic and signed by an expected/trusted identity key
+    pub fn verify_signature_against_identity(
+        &self,
+        expected_identity_pubkey_hex: Option<&str>,
+    ) -> Result<bool> {
+        if let Some(expected) = expected_identity_pubkey_hex {
+            if !self.identity_pubkey_hex.eq_ignore_ascii_case(expected) {
+                bail!(
+                    "Identity key mismatch in prekey bundle: expected '{}', found '{}'",
+                    expected,
+                    self.identity_pubkey_hex
+                );
+            }
+        }
         let identity_pubkey_bytes = hex_decode_32(&self.identity_pubkey_hex)?;
         let verifier = ed25519_dalek::VerifyingKey::from_bytes(&identity_pubkey_bytes)
             .map_err(|e| anyhow::anyhow!("Invalid identity public key in prekey bundle: {}", e))?;
@@ -126,6 +143,29 @@ pub struct E2eeMessageEnvelope {
 }
 
 impl E2eeMessageEnvelope {
+    /// Canonical Associated Data (AD) passed into ChaCha20-Poly1305 AEAD
+    pub fn associated_data(&self) -> Vec<u8> {
+        Self::compute_associated_data(
+            &self.sender_sds_id,
+            &self.recipient_sds_id,
+            self.sequence_number,
+            self.timestamp_ms,
+        )
+    }
+
+    pub fn compute_associated_data(
+        sender_sds_id: &str,
+        recipient_sds_id: &str,
+        sequence_number: u64,
+        timestamp_ms: u64,
+    ) -> Vec<u8> {
+        format!(
+            "sds-v1:ad:{}:{}:{}:{}",
+            sender_sds_id, recipient_sds_id, sequence_number, timestamp_ms
+        )
+        .into_bytes()
+    }
+
     /// Sender encrypts plaintext message for recipient using recipient's prekey bundle
     pub fn encrypt_for_recipient(
         sender_sds_id: &str,
@@ -135,8 +175,29 @@ impl E2eeMessageEnvelope {
         sequence_number: u64,
         timestamp_ms: u64,
     ) -> Result<Self> {
-        // 0. Authenticate recipient prekey bundle signature
-        if !recipient_prekey.verify_signature().unwrap_or(false) {
+        Self::encrypt_for_recipient_with_trust(
+            sender_sds_id,
+            recipient_sds_id,
+            recipient_prekey,
+            None,
+            plaintext,
+            sequence_number,
+            timestamp_ms,
+        )
+    }
+
+    /// Sender encrypts with explicit expected recipient identity key verification
+    pub fn encrypt_for_recipient_with_trust(
+        sender_sds_id: &str,
+        recipient_sds_id: &str,
+        recipient_prekey: &PrekeyBundle,
+        expected_recipient_identity_hex: Option<&str>,
+        plaintext: &[u8],
+        sequence_number: u64,
+        timestamp_ms: u64,
+    ) -> Result<Self> {
+        // 0. Authenticate recipient prekey bundle signature against expected identity
+        if !recipient_prekey.verify_signature_against_identity(expected_recipient_identity_hex)? {
             bail!(
                 "Recipient prekey bundle signature verification failed: forged or untrusted prekey"
             );
@@ -153,7 +214,7 @@ impl E2eeMessageEnvelope {
         // 3. Compute Diffie-Hellman shared secret
         let shared_secret = compute_ecdh_shared_secret(&ephemeral_secret, &recipient_prekey_bytes);
 
-        // 4. Derive symmetric 256-bit encryption key using HKDF-SHA256
+        // 4. Derive symmetric 256-bit encryption key using RFC 5869 HKDF-SHA256
         let symmetric_key = derive_symmetric_key(&shared_secret, b"sds-v1-e2ee-message");
 
         // 5. Generate 12-byte random nonce
@@ -161,11 +222,22 @@ impl E2eeMessageEnvelope {
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        // 6. Encrypt plaintext with ChaCha20-Poly1305 (AEAD)
+        // 6. Encrypt plaintext with ChaCha20-Poly1305 (AEAD) authenticating associated data
+        let ad = Self::compute_associated_data(
+            sender_sds_id,
+            recipient_sds_id,
+            sequence_number,
+            timestamp_ms,
+        );
+        let payload = chacha20poly1305::aead::Payload {
+            msg: plaintext,
+            aad: &ad,
+        };
+
         let cipher = ChaCha20Poly1305::new_from_slice(&symmetric_key)
             .map_err(|e| anyhow::anyhow!("Cipher init error: {}", e))?;
         let ciphertext = cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(nonce, payload)
             .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
 
         Ok(Self {
@@ -191,7 +263,7 @@ impl E2eeMessageEnvelope {
         let shared_secret =
             compute_ecdh_shared_secret(recipient_signed_prekey_secret, &sender_ephemeral_bytes);
 
-        // 3. Derive symmetric key
+        // 3. Derive symmetric key using RFC 5869 HKDF-SHA256
         let symmetric_key = derive_symmetric_key(&shared_secret, b"sds-v1-e2ee-message");
 
         // 4. Decode nonce and ciphertext
@@ -199,12 +271,18 @@ impl E2eeMessageEnvelope {
         let nonce = Nonce::from_slice(&nonce_bytes);
         let ciphertext = hex_decode_var(&self.ciphertext_hex)?;
 
-        // 5. Decrypt and verify Poly1305 MAC
+        // 5. Decrypt and verify Poly1305 MAC over Associated Data (AD)
+        let ad = self.associated_data();
+        let payload = chacha20poly1305::aead::Payload {
+            msg: ciphertext.as_slice(),
+            aad: &ad,
+        };
+
         let cipher = ChaCha20Poly1305::new_from_slice(&symmetric_key)
             .map_err(|e| anyhow::anyhow!("Cipher init error: {}", e))?;
-        let plaintext = cipher
-            .decrypt(nonce, ciphertext.as_slice())
-            .map_err(|e| anyhow::anyhow!("Decryption / MAC verification failed: {}", e))?;
+        let plaintext = cipher.decrypt(nonce, payload).map_err(|e| {
+            anyhow::anyhow!("Decryption / AEAD metadata verification failed: {}", e)
+        })?;
 
         Ok(plaintext)
     }
@@ -227,14 +305,13 @@ fn compute_ecdh_shared_secret(
     *shared.as_bytes()
 }
 
+/// Standard RFC 5869 HKDF-SHA256 Key Derivation Function (Extract & Expand)
 fn derive_symmetric_key(shared_secret: &[u8; 32], info: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(shared_secret);
-    hasher.update(info);
-    let hash = hasher.finalize();
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&hash);
-    key
+    let hk = hkdf::Hkdf::<Sha256>::new(None, shared_secret);
+    let mut okm = [0u8; 32];
+    hk.expand(info, &mut okm)
+        .expect("32 bytes is valid length for HKDF-SHA256");
+    okm
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -285,56 +362,51 @@ fn hex_decode_var(s: &str) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn decrypt_with_key(key: &[u8; 32], nonce_hex: &str, ciphertext_hex: &str) -> Result<Vec<u8>> {
+fn decrypt_with_key(
+    key: &[u8; 32],
+    nonce_hex: &str,
+    ciphertext_hex: &str,
+    ad: &[u8],
+) -> Result<Vec<u8>> {
     let nonce_bytes = hex_decode_12(nonce_hex)?;
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = hex_decode_var(ciphertext_hex)?;
 
     let cipher = ChaCha20Poly1305::new_from_slice(key)
         .map_err(|e| anyhow::anyhow!("Cipher init error: {}", e))?;
+    let payload = chacha20poly1305::aead::Payload {
+        msg: ciphertext.as_slice(),
+        aad: ad,
+    };
     let plaintext = cipher
-        .decrypt(nonce, ciphertext.as_slice())
-        .map_err(|e| anyhow::anyhow!("Decryption / MAC verification failed: {}", e))?;
+        .decrypt(nonce, payload)
+        .map_err(|e| anyhow::anyhow!("Decryption / AEAD metadata verification failed: {}", e))?;
 
     Ok(plaintext)
 }
 
+/// HKDF-SHA256 Chain Key Ratchet Step (RFC 5869)
 fn kdf_ck(chain_key: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
-    let mut h1 = Sha256::new();
-    h1.update(chain_key);
-    h1.update(b"sds-v1-ck-chain-step");
-    let new_ck = h1.finalize();
-
-    let mut h2 = Sha256::new();
-    h2.update(chain_key);
-    h2.update(b"sds-v1-ck-msg-key");
-    let mk = h2.finalize();
-
-    let mut out_ck = [0u8; 32];
-    let mut out_mk = [0u8; 32];
-    out_ck.copy_from_slice(&new_ck);
-    out_mk.copy_from_slice(&mk);
-    (out_ck, out_mk)
+    let hk = hkdf::Hkdf::<Sha256>::new(None, chain_key);
+    let mut new_ck = [0u8; 32];
+    let mut mk = [0u8; 32];
+    hk.expand(b"sds-v1-ck-chain-step", &mut new_ck)
+        .expect("valid HKDF length");
+    hk.expand(b"sds-v1-ck-msg-key", &mut mk)
+        .expect("valid HKDF length");
+    (new_ck, mk)
 }
 
+/// HKDF-SHA256 Root Key Ratchet Step (RFC 5869)
 fn kdf_rk(root_key: &[u8; 32], dh_out: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
-    let mut h1 = Sha256::new();
-    h1.update(root_key);
-    h1.update(dh_out);
-    h1.update(b"sds-v1-rk-root-step");
-    let new_rk = h1.finalize();
-
-    let mut h2 = Sha256::new();
-    h2.update(root_key);
-    h2.update(dh_out);
-    h2.update(b"sds-v1-rk-chain-step");
-    let new_ck = h2.finalize();
-
-    let mut out_rk = [0u8; 32];
-    let mut out_ck = [0u8; 32];
-    out_rk.copy_from_slice(&new_rk);
-    out_ck.copy_from_slice(&new_ck);
-    (out_rk, out_ck)
+    let hk = hkdf::Hkdf::<Sha256>::new(Some(root_key), dh_out);
+    let mut new_rk = [0u8; 32];
+    let mut new_ck = [0u8; 32];
+    hk.expand(b"sds-v1-rk-root-step", &mut new_rk)
+        .expect("valid HKDF length");
+    hk.expand(b"sds-v1-rk-chain-step", &mut new_ck)
+        .expect("valid HKDF length");
+    (new_rk, new_ck)
 }
 
 /// Double Ratchet Encrypted Message Header & Ciphertext
@@ -345,6 +417,16 @@ pub struct RatchetMessage {
     pub prev_chain_len: u32,
     pub nonce_hex: String,
     pub ciphertext_hex: String,
+}
+
+impl RatchetMessage {
+    pub fn associated_data(&self) -> Vec<u8> {
+        format!(
+            "sds-v1:ratchet-ad:{}:{}:{}",
+            self.sender_dh_pubkey_hex, self.seq_num, self.prev_chain_len
+        )
+        .into_bytes()
+    }
 }
 
 /// Double Ratchet Session State Machine
@@ -419,10 +501,23 @@ impl DoubleRatchetSession {
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
+        let ad = format!(
+            "sds-v1:ratchet-ad:{}:{}:{}",
+            hex_encode(&self.local_dh_public),
+            self.send_count,
+            self.prev_send_count
+        )
+        .into_bytes();
+
+        let payload = chacha20poly1305::aead::Payload {
+            msg: plaintext,
+            aad: &ad,
+        };
+
         let cipher = ChaCha20Poly1305::new_from_slice(&mk)
             .map_err(|e| anyhow::anyhow!("Cipher init error: {}", e))?;
         let ciphertext = cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(nonce, payload)
             .map_err(|e| anyhow::anyhow!("Encryption error: {}", e))?;
 
         let msg = RatchetMessage {
@@ -440,11 +535,12 @@ impl DoubleRatchetSession {
     /// Decrypt a received message, performing a DH ratchet step if a new DH key is observed
     pub fn ratchet_decrypt(&mut self, msg: &RatchetMessage) -> Result<Vec<u8>> {
         let sender_dh_bytes = hex_decode_32(&msg.sender_dh_pubkey_hex)?;
+        let ad = msg.associated_data();
 
         // Check if message key was previously skipped (out-of-order delivery)
         let skipped_key_lookup = (msg.sender_dh_pubkey_hex.clone(), msg.seq_num);
         if let Some(mk) = self.skipped_message_keys.remove(&skipped_key_lookup) {
-            return decrypt_with_key(&mk, &msg.nonce_hex, &msg.ciphertext_hex);
+            return decrypt_with_key(&mk, &msg.nonce_hex, &msg.ciphertext_hex, &ad);
         }
 
         // If sender sent a new DH public key, perform DH ratchet step
@@ -495,7 +591,7 @@ impl DoubleRatchetSession {
         self.recv_chain_key = Some(new_ck);
         self.recv_count += 1;
 
-        decrypt_with_key(&mk, &msg.nonce_hex, &msg.ciphertext_hex)
+        decrypt_with_key(&mk, &msg.nonce_hex, &msg.ciphertext_hex, &ad)
     }
 
     fn skip_message_keys(&mut self, until_seq: u32) -> Result<()> {

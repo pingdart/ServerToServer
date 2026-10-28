@@ -9,6 +9,7 @@ pub struct DnsSnapshot {
     pub aaaa_records: Vec<String>,
     pub mx_records: Vec<String>,
     pub txt_records: Vec<String>,
+    pub srv_records: Vec<String>,
     pub ns_records: Vec<String>,
     pub cname_records: Vec<String>,
     pub https_reachable: Option<String>,
@@ -33,9 +34,11 @@ pub fn resolve_dns(domain: &str) -> DnsSnapshot {
         }
     }
 
-    // 2. Query dig for MX, TXT, NS, CNAME
+    // 2. Query dig for MX, TXT, SRV, NS, CNAME
     snapshot.mx_records = query_dig(domain, "MX");
     snapshot.txt_records = query_dig(domain, "TXT");
+    let srv_target = format!("_sds._udp.{}", domain);
+    snapshot.srv_records = query_dig(&srv_target, "SRV");
     snapshot.ns_records = query_dig(domain, "NS");
     snapshot.cname_records = query_dig(domain, "CNAME");
 

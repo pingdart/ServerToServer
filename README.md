@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Transport-QUIC%20RFC%209000%20%7C%20RFC%209221-blue.svg" alt="QUIC RFC 9000 / 9221" />
   <img src="https://img.shields.io/badge/Security-E2EE%20Double%20Ratchet-green.svg" alt="E2EE Double Ratchet" />
   <img src="https://img.shields.io/badge/Architecture-100%25%20Stateless%20SDK-purple.svg" alt="Stateless SDK" />
-  <img src="https://img.shields.io/badge/Tests-57%2F57%20Passed%20(9%20Suites)-success.svg" alt="Tests 57/57 Passed" />
+  <img src="https://img.shields.io/badge/Tests-59%2F59%20Passed%20(9%20Suites)-success.svg" alt="Tests 59/59 Passed" />
 </p>
 
 ---
@@ -126,14 +126,30 @@ All communication between federated servers is structured into binary frames for
 |                     Encrypted Payload Bytes...                |
 ```
 
-### Frame Types:
-* `0x00`: **Ping** — Keepalive and path validation (0-RTT permitted).
-* `0x01`: **Ack** — Delivery acknowledgement and receipt confirmation (0-RTT permitted).
-* `0x02`: **StreamData** — Reliable E2EE text message, attachment, or profile payload.
-* `0x03`: **StreamClose** — Stream termination and teardown.
-* `0x04`: **DatagramMedia** — Unreliable low-latency Opus audio / video packet (RFC 9221).
-* `0x05`: **ForwardReq** — Cross-server call invitation and routing request.
-* `0x06`: **ProfileQuery** — User identity and prekey bundle lookup.
+### Canonical Frame Types (`src/frame.rs`):
+* `0x0004`: **TYPE_PING** — Keepalive and path validation (0-RTT permitted).
+* `0x0005`: **TYPE_PONG** — Keepalive response (0-RTT permitted).
+* `0x0010`: **TYPE_RESOLVE_PROFILE_REQ** — Idempotent user identity and prekey bundle lookup (0-RTT permitted).
+* `0x0011`: **TYPE_RESOLVE_PROFILE_RESP** — Profile query response.
+* `0x0034`: **TYPE_PRESENCE_STATE** — Ephemeral presence state broadcast (0-RTT permitted).
+* `0x0030`: **TYPE_MSG_ENVELOPE** — Reliable E2EE text message, attachment, or encrypted payload (1-RTT).
+* `0x0031`: **TYPE_MSG_ACK** — Delivery acknowledgement and remote receipt (1-RTT).
+* `0x0050`: **TYPE_CALL_INVITE** — Cross-server call invitation (1-RTT).
+* `0x0070`: **TYPE_MEDIA_AUDIO_OPUS** — Unreliable low-latency Opus audio datagram (RFC 9221).
+* `0x0071` / `0x0072`: **TYPE_MEDIA_VIDEO_KEYFRAME / DELTA** — Video stream datagrams.
+
+### Canonical Protocol Error Codes:
+* `0x0000`: **ERR_OK** — Operation succeeded.
+* `0x0006`: **ERR_REPLAY_DETECTED** — Replayed ticket, duplicate token, or expired timestamp.
+* `0x0007`: **ERR_0RTT_OPERATION_FORBIDDEN** — State-mutating operation rejected in 0-RTT early data.
+* `0x0008`: **ERR_DEADLINE_EXPIRED** — Playout lifetime budget exceeded; frame discarded.
+
+### Multi-Layer Security Architecture
+* **QUIC Transport Layer (RFC 9000 / TLS 1.3):** Provides outer packet encryption, authentication, anti-tampering, and connection integrity across the public internet.
+* **SDS Wire Frame Layer (RFC 28-Byte Header):** Contains stream metadata, playout deadlines, and an optional 16-byte Poly1305 / HMAC-SHA256 authentication tag for intermediate router forwarding.
+* **End-to-End Encryption (E2EE Double Ratchet):** Payload is encrypted directly on user devices with ChaCha20-Poly1305. The AEAD authentication tag covers Associated Data (`sender_id`, `recipient_id`, `sequence_number`, `timestamp_ms`), preventing any intermediary server from altering envelope routing metadata.
+* **Connection Migration Reality:** QUIC allows clients to rebind sockets using persistent 64-bit CIDs. Migration is handled as best-effort path validation by the QUIC stack (e.g. Quinn `rebind`); network disruptions or severe NAT rebinding may require session re-establishment.
+* **Durable Offline Storage:** The core SDS SDK is 100% stateless (zero database on disk). In-memory retry queues provide transient delivery across momentary network drops; durable long-term storage and restart recovery are explicitly delegated to the host application's persistent database (PostgreSQL, MySQL, Redis).
 
 ---
 
@@ -223,12 +239,12 @@ cargo clippy --locked --all-targets -- -D warnings
 # Gate 3: Formatting Conformance
 cargo fmt --check
 
-# Gate 4: Test Suite Execution (57 Passed across 9 Test Targets)
+# Gate 4: Test Suite Execution (59 Passed across 9 Test Targets)
 cargo test --locked --all-targets
 ```
 
 ### Summary of Passing Automated Test Suites:
-- `src/lib.rs` (Unit Tests): **27 passed**
+- `src/lib.rs` (Unit Tests): **29 passed**
 - `tests/production_verification_tests.rs`: **6 passed**
 - `tests/test_federation_e2ee_profile.rs`: **3 passed**
 - `tests/test_federation_lifecycle_failure_recovery.rs`: **1 passed**
@@ -238,7 +254,7 @@ cargo test --locked --all-targets
 - `tests/test_three_server_mesh_federation.rs`: **1 passed**
 - `tests/test_transport_and_framing.rs`: **5 passed**
 
-**Total: 57 passed, 0 failed, 0 ignored (100% pass rate).**
+**Total: 59 passed, 0 failed, 0 ignored (100% pass rate).**
 
 ---
 

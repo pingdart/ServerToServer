@@ -58,6 +58,24 @@ pub enum MessageDeliveryStatus {
     DuplicateIgnored,
 }
 
+/// Remote Acknowledgment Proof returned by remote peer server upon verified wire frame receipt
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FederatedRemoteAck {
+    pub message_id: String,
+    pub recipient_sds_id: String,
+    pub ack_timestamp_ms: u64,
+    pub remote_server_domain: String,
+}
+
+/// Trait abstraction for real network transport (e.g. Quinn QUIC / UDP socket)
+pub trait FederationTransportSender: Send + Sync {
+    fn send_envelope_to_peer(
+        &self,
+        peer_addr: SocketAddr,
+        envelope: &E2eeMessageEnvelope,
+    ) -> Result<FederatedRemoteAck, String>;
+}
+
 #[derive(Debug, Clone)]
 pub struct QueuedFederatedMessage {
     pub message_id: String,
@@ -138,6 +156,7 @@ pub struct FederationRouter {
     pub delivered_receipts: HashMap<String, u64>, // message_id -> delivered_timestamp_ms
     pub seen_message_ids: HashSet<String>,
     pub app_backend: Option<Arc<dyn SdsAppBackendAdapter>>,
+    pub network_transport: Option<Arc<dyn FederationTransportSender>>,
     pub query_rate_limiter: HashMap<String, (u32, Instant)>,
     pub enable_in_memory_retry: bool,
 }
@@ -152,6 +171,7 @@ impl FederationRouter {
             delivered_receipts: HashMap::new(),
             seen_message_ids: HashSet::new(),
             app_backend: None,
+            network_transport: None,
             query_rate_limiter: HashMap::new(),
             enable_in_memory_retry: false,
         }
@@ -160,6 +180,11 @@ impl FederationRouter {
     /// Attaches the host application backend adapter
     pub fn set_app_backend(&mut self, backend: Arc<dyn SdsAppBackendAdapter>) {
         self.app_backend = Some(backend);
+    }
+
+    /// Attaches the live network transport sender
+    pub fn set_network_transport(&mut self, transport: Arc<dyn FederationTransportSender>) {
+        self.network_transport = Some(transport);
     }
 
     /// Server 2 SDK handles incoming search/profile request by querying the local application backend
@@ -289,11 +314,26 @@ impl FederationRouter {
 
         // 2. Cross-server federated routing
         if let Some(peer) = self.federated_peers.get(&dest_domain_lower) {
-            if peer.is_connected && peer.endpoint_addr.is_some() {
-                // Immediate dispatch to peer server endpoint
-                self.delivered_receipts
-                    .insert(message_id.to_string(), envelope.timestamp_ms);
-                return MessageDeliveryStatus::QueuedForFederatedServer;
+            if peer.is_connected {
+                if let Some(endpoint) = peer.endpoint_addr {
+                    if let Some(transport) = &self.network_transport {
+                        match transport.send_envelope_to_peer(endpoint, &envelope) {
+                            Ok(ack) => {
+                                self.delivered_receipts
+                                    .insert(message_id.to_string(), ack.ack_timestamp_ms);
+                                return MessageDeliveryStatus::DeliveredDirect;
+                            }
+                            Err(_) => {
+                                // Link transmission failed; fall through to retry queue
+                            }
+                        }
+                    } else {
+                        // Immediate dispatch marked for federated peer node
+                        self.delivered_receipts
+                            .insert(message_id.to_string(), envelope.timestamp_ms);
+                        return MessageDeliveryStatus::QueuedForFederatedServer;
+                    }
+                }
             }
         }
 
@@ -475,5 +515,60 @@ mod tests {
         let rate_limited =
             server2_router.handle_incoming_profile_query("crawler@scraping.org", "user2");
         assert!(rate_limited.is_err());
+    }
+
+    struct MockQuicTransportSender {
+        pub expected_peer_addr: SocketAddr,
+    }
+
+    impl FederationTransportSender for MockQuicTransportSender {
+        fn send_envelope_to_peer(
+            &self,
+            peer_addr: SocketAddr,
+            envelope: &E2eeMessageEnvelope,
+        ) -> Result<FederatedRemoteAck, String> {
+            if peer_addr == self.expected_peer_addr {
+                Ok(FederatedRemoteAck {
+                    message_id: "msg-live-101".to_string(),
+                    recipient_sds_id: envelope.recipient_sds_id.clone(),
+                    ack_timestamp_ms: 1_700_000_500_000,
+                    remote_server_domain: "server2.remote.com".to_string(),
+                })
+            } else {
+                Err("Connection refused".to_string())
+            }
+        }
+    }
+
+    #[test]
+    fn test_federation_router_with_real_transport_dispatch() {
+        use crate::e2ee::*;
+
+        let mut router = FederationRouter::new("server1.local.com");
+        let remote_addr: SocketAddr = "198.51.100.2:4433".parse().unwrap();
+        router.register_peer_node("server2.remote.com", "REMOTE123", Some(remote_addr));
+
+        let transport = Arc::new(MockQuicTransportSender {
+            expected_peer_addr: remote_addr,
+        });
+        router.set_network_transport(transport);
+
+        let user = UserCryptoIdentity::generate();
+        let (_prekey_secret, bundle) = user.generate_prekey_bundle();
+        let envelope = E2eeMessageEnvelope::encrypt_for_recipient(
+            "sender@server1.local.com",
+            "recipient@server2.remote.com",
+            &bundle,
+            b"Encrypted live payload",
+            1,
+            1_700_000_100_000,
+        )
+        .unwrap();
+
+        // When network transport is connected, route_envelope dispatches over transport
+        // and returns DeliveredDirect upon receiving verified remote ACK!
+        let status = router.route_envelope("msg-live-101", "server2.remote.com", envelope);
+        assert_eq!(status, MessageDeliveryStatus::DeliveredDirect);
+        assert!(router.delivered_receipts.contains_key("msg-live-101"));
     }
 }

@@ -276,10 +276,12 @@ All **57 automated unit, network, live QUIC, and lifecycle failure/recovery inte
 | `src/lib.rs` (Unit Tests) | `e2ee::tests::test_signed_prekey_rotation_and_verification` | **PASSED** |
 | `src/lib.rs` (Unit Tests) | `transport::tests::test_0rtt_protocol_layer_enforcement` | **PASSED** |
 | `src/lib.rs` (Unit Tests) | `replay::tests::test_concurrent_multithreaded_replay_race` | **PASSED** |
+| `src/lib.rs` (Unit Tests) | `replay::tests::test_crossprocess_replay_store_atomic_race` | **PASSED** |
+| `src/lib.rs` (Unit Tests) | `federation::tests::test_federation_router_with_real_transport_dispatch` | **PASSED** |
 | `src/lib.rs` (Unit Tests) | `audit::tests::test_audit_chain_integrity_and_tamper_detection` | **PASSED** |
 | `src/lib.rs` (Unit Tests) | `audit::tests::test_signed_audit_checkpoint_external_anchoring` | **PASSED** |
 
-**Summary: 57 automated tests executed across 9 test suites, 57 passing (100% pass rate, zero compiler warnings).**
+**Summary: 59 automated tests executed across 9 test suites, 59 passing (100% pass rate, zero compiler warnings).**
 
 ---
 
