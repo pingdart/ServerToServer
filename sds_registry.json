@@ -1,0 +1,122 @@
+[
+  {
+    "domain_id": "Q2KE-9Y5F-G8",
+    "raw_id": "Q2KE9Y5FG8",
+    "canonical_domain": "meddylist.com",
+    "checksum": "G8",
+    "created_at": "2026-10-27T06:20:10.865875Z",
+    "updated_at": "2026-10-27T06:20:10.865875Z",
+    "status": "active",
+    "cached_dns": {
+      "a_records": [
+        "94.136.190.60"
+      ],
+      "aaaa_records": [],
+      "mx_records": [
+        "10 mail.pingdart.com."
+      ],
+      "txt_records": [
+        "\"google-site-verification=1-A5HQuQIdcMeoIjEuu-EcOsbHOSVLkqX6D8IMzJMjY\"",
+        "\"v=spf1 mx a ip4:13.140.151.16 -all\"",
+        "\"google-site-verification=DOjzDswwLXTL_CaiUuU19Zxh78PjXWNHhZ5oVUglA0k\""
+      ],
+      "ns_records": [
+        "ns33.domaincontrol.com.",
+        "ns34.domaincontrol.com."
+      ],
+      "cname_records": [],
+      "https_reachable": "Reachable (28 ms)",
+      "http_reachable": "Reachable (28 ms)"
+    }
+  },
+  {
+    "domain_id": "D543HERNH8",
+    "raw_id": "D543HERNH8",
+    "canonical_domain": "bloomingeasyservices.in",
+    "checksum": "H8",
+    "created_at": "2026-10-27T06:37:24.875918Z",
+    "updated_at": "2026-10-27T06:37:24.875918Z",
+    "status": "active",
+    "cached_dns": {
+      "a_records": [
+        "147.93.17.127"
+      ],
+      "aaaa_records": [
+        "2a02:4780:11:1933:0:2761:3f7e:2"
+      ],
+      "mx_records": [],
+      "txt_records": [],
+      "ns_records": [
+        "ns1.dns-parking.com.",
+        "ns2.dns-parking.com."
+      ],
+      "cname_records": [],
+      "https_reachable": "Reachable (30 ms)",
+      "http_reachable": "Reachable (29 ms)"
+    }
+  },
+  {
+    "domain_id": "19EG-DPHY-N9",
+    "raw_id": "19EGDPHYN9",
+    "canonical_domain": "xyz.com",
+    "checksum": "N9",
+    "created_at": "2026-10-27T06:21:44.286510Z",
+    "updated_at": "2026-10-27T06:21:44.286510Z",
+    "status": "active",
+    "cached_dns": {
+      "a_records": [
+        "54.183.194.117"
+      ],
+      "aaaa_records": [],
+      "mx_records": [
+        "10 aspmx2.googlemail.com.",
+        "5 alt1.aspmx.l.google.com.",
+        "5 alt2.aspmx.l.google.com.",
+        "10 aspmx3.googlemail.com.",
+        "1 aspmx.l.google.com."
+      ],
+      "txt_records": [
+        "\"v=spf1 include:_spf.google.com include:amazonses.com -all\""
+      ],
+      "ns_records": [
+        "ns-1418.awsdns-49.org.",
+        "ns-32.awsdns-04.com.",
+        "ns-1664.awsdns-16.co.uk.",
+        "ns-796.awsdns-35.net."
+      ],
+      "cname_records": [],
+      "https_reachable": "Reachable (232 ms)",
+      "http_reachable": "Reachable (233 ms)"
+    }
+  },
+  {
+    "domain_id": "5QJCXPH2HN",
+    "raw_id": "5QJCXPH2HN",
+    "canonical_domain": "pingdart.com",
+    "checksum": "HN",
+    "created_at": "2026-10-27T06:43:24.103443Z",
+    "updated_at": "2026-10-27T07:24:18.568626Z",
+    "status": "active",
+    "cached_dns": {
+      "a_records": [
+        "94.136.190.60"
+      ],
+      "aaaa_records": [],
+      "mx_records": [
+        "10 mail.pingdart.com."
+      ],
+      "txt_records": [
+        "\"google-site-verification=qXwm2FiqltrIC0-88zHdRxyNo8OHhtyqDuOCXPG7tDY\"",
+        "\"v=spf1 mx a ip4:13.140.151.16 ip6:2a02:c207:2335:7104::1 -all\"",
+        "\"google-site-verification=nioUFcvW8dSBwGhDNwiTeGSx5Lv-sx-p46aJLvc2Yl4\""
+      ],
+      "ns_records": [
+        "ns44.domaincontrol.com.",
+        "ns43.domaincontrol.com."
+      ],
+      "cname_records": [],
+      "https_reachable": "Reachable (41 ms)",
+      "http_reachable": "Reachable (28 ms)"
+    }
+  }
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "input_domain": "xyz.com",
+    "canonical_domain": "xyz.com",
+    "tier": 1,
+    "payload_length": 8,
+    "total_length": 10,
+    "salt": 0,
+    "payload": "19EGDPHY",
+    "checksum": "N9",
+    "raw_id": "19EGDPHYN9",
+    "formatted_id": "19EGDPHYN9"
+  },
+  {
+    "input_domain": "meddylist.com",
+    "canonical_domain": "meddylist.com",
+    "tier": 1,
+    "payload_length": 8,
+    "total_length": 10,
+    "salt": 0,
+    "payload": "Q2KE9Y5F",
+    "checksum": "G8",
+    "raw_id": "Q2KE9Y5FG8",
+    "formatted_id": "Q2KE9Y5FG8"
+  },
+  {
+    "input_domain": "bloomingeasyservices.in",
+    "canonical_domain": "bloomingeasyservices.in",
+    "tier": 1,
+    "payload_length": 8,
+    "total_length": 10,
+    "salt": 0,
+    "payload": "D543HERN",
+    "checksum": "H8",
+    "raw_id": "D543HERNH8",
+    "formatted_id": "D543HERNH8"
+  },
+  {
+    "input_domain": "pingdart.com",
+    "canonical_domain": "pingdart.com",
+    "tier": 1,
+    "payload_length": 8,
+    "total_length": 10,
+    "salt": 0,
+    "payload": "5QJCXPH2",
+    "checksum": "HN",
+    "raw_id": "5QJCXPH2HN",
+    "formatted_id": "5QJCXPH2HN"
+  },
+  {
+    "input_domain": "HTTPS://MEDDYLIST.COM:443/",
+    "canonical_domain": "meddylist.com",
+    "tier": 1,
+    "payload_length": 8,
+    "total_length": 10,
+    "salt": 0,
+    "payload": "Q2KE9Y5F",
+    "checksum": "G8",
+    "raw_id": "Q2KE9Y5FG8",
+    "formatted_id": "Q2KE9Y5FG8"
+  },
+  {
+    "input_domain": "xyz.com",
+    "canonical_domain": "xyz.com",
+    "tier": 2,
+    "payload_length": 10,
+    "total_length": 12,
+    "salt": 0,
+    "payload": "19EGDPHYZJ",
+    "checksum": "3M",
+    "raw_id": "19EGDPHYZJ3M",
+    "formatted_id": "19EGDPHYZJ3M"
+  },
+  {
+    "input_domain": "pingdart.com",
+    "canonical_domain": "pingdart.com",
+    "tier": 2,
+    "payload_length": 10,
+    "total_length": 12,
+    "salt": 0,
+    "payload": "5QJCXPH2V1",
+    "checksum": "SJ",
+    "raw_id": "5QJCXPH2V1SJ",
+    "formatted_id": "5QJCXPH2V1SJ"
+  }
+]
