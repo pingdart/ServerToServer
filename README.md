@@ -354,6 +354,8 @@ UcallSDS/
 │   ├── lib.rs               # Library export definition (sds_core)
 │   └── main.rs              # CLI entrypoint (sds)
 ├── tests/                   # 9 comprehensive integration and live socket test suites
+├── API_REFERENCE.md         # Complete REST & RPC API specification
+├── install.sh               # 1-Click interactive server installation script
 ├── OPERATIONAL_GUIDE.md     # In-depth operational engineering guide
 ├── MULTI_SERVER_MULTI_USER_FEDERATION_GUIDE.md  # 10-server mesh scaling & call guide
 ├── SDS_TRANSPORT_SPEC_AND_STATUS.md             # Wire transport specification
