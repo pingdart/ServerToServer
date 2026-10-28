@@ -9,6 +9,7 @@ pub mod frame;
 pub mod id;
 pub mod identity;
 pub mod profile;
+pub mod recipient_resolver;
 pub mod replay;
 pub mod storage;
 pub mod transport;
@@ -28,6 +29,10 @@ pub use identity::{
     SdsEndpointRecord, SdsIdentityKeyPair, SdsKeyRotationCertificate, SdsVerifiedProfile,
 };
 pub use profile::{AppProfileCache, SdsAppProfile};
+pub use recipient_resolver::{
+    DestinationTarget, RecipientResolver, RequestKind, RoutingDeliveryResult, RoutingRequest,
+    SdsRoutingEngine,
+};
 pub use replay::{ReplayStrikeRegister, SharedReplayStore};
 pub use storage::SdsRegistry;
 pub use transport::{SdsTransportSession, TransportMetrics, TransportState};

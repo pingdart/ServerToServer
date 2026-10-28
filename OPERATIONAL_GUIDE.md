@@ -372,8 +372,8 @@ cargo fmt --check
 ```bash
 cargo test --locked --all-targets
 ```
-*Result:* **59 passed; 0 failed; 0 ignored** across **9 test suites** (with test targets):
-- `src/lib.rs` (Unit Tests): **29 passed**
+*Result:* **61 passed; 0 failed; 0 ignored** across **9 test suites** (with test targets):
+- `src/lib.rs` (Unit Tests): **31 passed**
 - `tests/production_verification_tests.rs`: **6 passed**
 - `tests/test_federation_e2ee_profile.rs`: **3 passed**
 - `tests/test_federation_lifecycle_failure_recovery.rs`: **1 passed**

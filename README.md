@@ -10,8 +10,84 @@
   <img src="https://img.shields.io/badge/Transport-QUIC%20RFC%209000%20%7C%20RFC%209221-blue.svg" alt="QUIC RFC 9000 / 9221" />
   <img src="https://img.shields.io/badge/Security-E2EE%20Double%20Ratchet-green.svg" alt="E2EE Double Ratchet" />
   <img src="https://img.shields.io/badge/Architecture-100%25%20Stateless%20SDK-purple.svg" alt="Stateless SDK" />
-  <img src="https://img.shields.io/badge/Tests-59%2F59%20Passed%20(9%20Suites)-success.svg" alt="Tests 59/59 Passed" />
+  <img src="https://img.shields.io/badge/Tests-61%2F61%20Passed%20(9%20Suites)-success.svg" alt="Tests 61/61 Passed" />
 </p>
+
+---
+
+## 🚀 Quick Server Installation (`install.sh`)
+
+Install and configure UCall SDS on your server with a single interactive script:
+
+```bash
+# Clone the official repository and run the setup script:
+git clone https://github.com/pingdart/ServerToServer.git
+cd ServerToServer
+chmod +x install.sh
+./install.sh
+```
+
+### What the installer prompts and configures:
+1. **Admin Email:** Prompts for your administrative contact email (`e.g. admin@pingdart.com`).
+2. **Admin Username & Password:** Secure, masked credential setup for management and monitoring.
+3. **Backend API Connection:** Prompts for your host application backend API URL (`e.g. http://localhost:4025`), validates live HTTP reachability, and binds the host queue.
+4. **Canonical Domain & SDS ID:** Computes your server's deterministic 10-character Crockford Base32 ID and displays the required DNS SRV + TXT records to publish.
+5. **Systemd Service Setup:** Installs `/etc/systemd/system/ucallsds.service` on Linux for automatic startup on reboot.
+
+---
+
+## 2. Core Routing Architecture (Local Fast-Path vs. Federated Mesh)
+
+UCall SDS operates on an explicit destination-first routing architecture:
+
+```
+                      [ User sends Message or Call ]
+                                    │
+                       [ Parse Recipient Address ]
+                       [ Check Duplicate Msg ID  ]
+                                    │
+                    Is Destination Server ID == Local ID?
+                                   / \
+                                  /   \
+                         YES     /     \     NO (Remote Server)
+                                /       \
+               [ Find in Local User DB ]   [ Resolve Server ID to Domain ]
+                           │                               │
+                 Recipient Reachable?             [ DNS SRV + TXT Lookup ]
+                        /     \                            │
+                       /       \           [ Verify Server Ed25519 Identity ]
+               YES    /         \  OFFLINE                 │
+                     /           \         [ Connect / Reuse QUIC Pool Connection ]
+        [ Deliver to Device ] [ Host Backend               │
+          via WebSocket /     Durable Queue ]      Message or Call?
+            Local Push                                    / \
+                                                         /   \
+                                               MESSAGE  /     \  CALL
+                                                       /       \
+                                        [ Send E2EE Envelope ] [ Send Call Signaling ]
+                                        [ over QUIC Stream   ] [ over QUIC Stream   ]
+                                                  │                     │
+                                        [ Remote Replay Gate ] [ Exchange Media via ]
+                                        [ + Delivers Cipher ]  [ QUIC DATAGRAMs     ]
+                                                  │                     │
+                                        [ Return Remote ACK  ] [ 150ms Lifetime Drop]
+```
+
+### Critical Security Rule
+**Servers only route E2EE ciphertext.** Server 1 and remote servers never hold private decryption keys and cannot read plaintext messages. Message payload decryption occurs exclusively on the recipient's authorized client application.
+
+### Path A — Destination is on Local Server (Fast Path)
+1. Recipient server ID matches Local Server ID (e.g. `alice@alpha.ucall.net` or `alice#ALPHA11223`).
+2. Server looks up user in local database; skips DNS and network transport.
+3. If online, delivers encrypted envelope directly to device session.
+4. If offline, commits to host application's persistent queue (PostgreSQL / Redis).
+
+### Path B — Destination is on Remote Federated Server
+1. Resolves destination server ID to its canonical domain.
+2. Queries DNS for `_sds._udp.<domain>` SRV and TXT records to retrieve hostname, UDP port (`4433`), and public Ed25519 authority key.
+3. Authenticates the remote server's signed `SdsEndpointRecord`, verifying identity against the DNS root.
+4. Reuses or opens a multiplexed QUIC connection from the connection pool.
+5. Transmits E2EE message envelope or call signaling; receives verified remote acknowledgement (`FederatedRemoteAck`).
 
 ---
 
@@ -239,12 +315,12 @@ cargo clippy --locked --all-targets -- -D warnings
 # Gate 3: Formatting Conformance
 cargo fmt --check
 
-# Gate 4: Test Suite Execution (59 Passed across 9 Test Targets)
+# Gate 4: Test Suite Execution (61 Passed across 9 Test Targets)
 cargo test --locked --all-targets
 ```
 
 ### Summary of Passing Automated Test Suites:
-- `src/lib.rs` (Unit Tests): **29 passed**
+- `src/lib.rs` (Unit Tests): **31 passed**
 - `tests/production_verification_tests.rs`: **6 passed**
 - `tests/test_federation_e2ee_profile.rs`: **3 passed**
 - `tests/test_federation_lifecycle_failure_recovery.rs`: **1 passed**
@@ -254,7 +330,7 @@ cargo test --locked --all-targets
 - `tests/test_three_server_mesh_federation.rs`: **1 passed**
 - `tests/test_transport_and_framing.rs`: **5 passed**
 
-**Total: 59 passed, 0 failed, 0 ignored (100% pass rate).**
+**Total: 61 passed, 0 failed, 0 ignored (100% pass rate).**
 
 ---
 
